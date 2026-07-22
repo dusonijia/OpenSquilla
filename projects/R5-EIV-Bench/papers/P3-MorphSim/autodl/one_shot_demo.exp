@@ -1,0 +1,237 @@
+#!/usr/bin/expect -f
+# 一键GPU测试：创建实例→上传代码→跑10秒demo→下载结果→关机释放
+
+set timeout 600
+set token "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjEwODgzNjEsInV1aWQiOiI2NzRhYTFmYjBkYTYzYmUwIiwidGVuYW50IjoiYXV0b2RsIiwiYXVkIjoiZGV2ZWxvcF9hcGkifQ.JIKWKBdGTHBFVu1v3W6mxGb6-xDX3AhIYF1twfpuxPLBrAExArvv30qWtzyc9XmkTjXtaBaGpBOAENKETkuqiA"
+set BASE "https://api.autodl.com"
+
+# ========== Step 1: 创建实例 ==========
+puts "\n=== Step 1: 创建RTX 4090实例 ==="
+
+spawn /usr/bin/python3 -c "
+import requests, json, time
+BASE = 'https://api.autodl.com'
+TOKEN = '$token'
+headers = {'Authorization': TOKEN, 'Content-Type': 'application/json'}
+
+# 创建实例
+url = BASE + '/api/v1/dev/instance/pro/create'
+body = {
+    'data_center_list': [{'region_sign': 'west-D', 'center_id': 8}],
+    'req_gpu_amount': 1,
+    'gpu_spec_uuid': 'v-48g',
+    'image_uuid': 'base-image-l2t43iu6uk',
+    'cuda_v_from': 113,
+    'instance_name': 'MorphSim-Demo',
+}
+resp = requests.post(url, headers=headers, json=body)
+data = resp.json()
+print(f'创建结果: {json.dumps(data, ensure_ascii=False)}')
+
+if data.get('code') != 'Success':
+    exit(1)
+
+instance_uuid = data['data']['instance_uuid']
+print(f'实例UUID: {instance_uuid}')
+
+# 等待实例启动
+print('等待实例启动...')
+for i in range(60):
+    time.sleep(5)
+    url2 = BASE + f'/api/v1/dev/instance/pro/status?instance_uuid={instance_uuid}'
+    resp2 = requests.get(url2, headers=headers)
+    status_data = resp2.json()
+    status = status_data.get('data', '')
+    print(f'  状态: {status}')
+    if status == 'running':
+        break
+
+# 获取SSH信息
+url3 = BASE + f'/api/v1/dev/instance/pro/snapshot?instance_uuid={instance_uuid}'
+resp3 = requests.get(url3, headers=headers)
+snap = resp3.json().get('data', {})
+ssh_cmd = snap.get('ssh_command', '')
+ssh_port = snap.get('ssh_port', '')
+proxy_host = snap.get('proxy_host', '')
+root_password = snap.get('root_password', '')
+
+# 写到文件供后续使用
+with open('/tmp/autodl_ssh.txt', 'w') as f:
+    f.write(f'{instance_uuid}\\n')
+    f.write(f'{proxy_host}\\n')
+    f.write(f'{ssh_port}\\n')
+    f.write(f'{root_password}\\n')
+
+print(f'SSH: {ssh_cmd}')
+print(f'密码: {root_password}')
+print('SSH信息已保存到 /tmp/autodl_ssh.txt')
+"
+expect eof
+
+# 读取SSH信息
+set fp [open "/tmp/autodl_ssh.txt" r]
+set instance_uuid [lindex [split [read $fp] "\n"] 0]
+close $fp
+
+set fp [open "/tmp/autodl_ssh.txt" r]
+set lines [split [read $fp] "\n"]
+close $fp
+
+set instance_uuid [lindex $lines 0]
+set ssh_host [lindex $lines 1]
+set ssh_port [lindex $lines 2]
+set ssh_pass [lindex $lines 3]
+
+puts "\n实例UUID: $instance_uuid"
+puts "SSH Host: $ssh_host"
+puts "SSH Port: $ssh_port"
+
+# ========== Step 2: 上传代码 ==========
+puts "\n=== Step 2: 上传代码 ==="
+
+# 先打包
+spawn /bin/sh -c "cd '/Users/du/Library/Application Support/@opensquilla/desktop-electron/opensquilla/state/workspace/eiv-research/projects/R5-EIV-Bench/papers/P3-MorphSim' && tar czf /tmp/morphsim.tar.gz --no-xattrs morphsim/"
+expect eof
+
+# SCP上传
+spawn scp -o StrictHostKeyChecking=no -P $ssh_port /tmp/morphsim.tar.gz root@$ssh_host:/root/
+expect "password:"
+send "$ssh_pass\r"
+expect eof
+puts "\n代码上传完成"
+
+# ========== Step 3: SSH跑10秒demo ==========
+puts "\n=== Step 3: 跑10秒demo ==="
+
+spawn ssh -o StrictHostKeyChecking=no -p $ssh_port root@$ssh_host
+expect "password:"
+send "$ssh_pass\r"
+expect "*#"
+
+# 解压代码
+send "cd /root && rm -rf morphsim && tar xzf morphsim.tar.gz\r"
+expect "*#"
+
+# 写demo脚本到远程
+send "cat > /root/demo.py << 'DEMO_EOF'\r"
+send "import sys\r"
+send "sys.path.insert(0, '/root')\r"
+send "import time\r"
+send "import numpy as np\r"
+send "\r"
+send "print('=== MorphSim 10秒GPU Demo ===')\r"
+send "start = time.time()\r"
+send "\r"
+send "# 1. 导入MorphSim\r"
+send "from morphsim.core.engine import MorphSimEngine, SimConfig\r"
+send "from morphsim.core.vehicle import MorphableVehicle, MorphMode\r"
+send "from morphsim.scenarios.loader import ScenarioLoader\r"
+send "print(f'[{time.time()-start:.1f}s] ✅ MorphSim导入成功')\r"
+send "\r"
+send "# 2. 加载场景\r"
+send "loader = ScenarioLoader()\r"
+send "scenarios = loader.list_scenarios()\r"
+send "print(f'[{time.time()-start:.1f}s] ✅ 场景数: {len(scenarios)}')\r"
+send "print(f'  场景: {scenarios}')\r"
+send "\r"
+send "# 3. 创建车辆和配置\r"
+send "config = SimConfig(dt=0.01, n_substeps=4)\r"
+send "vehicle = MorphableVehicle()\r"
+send "print(f'[{time.time()-start:.1f}s] ✅ 车辆配置完成')\r"
+send "\r"
+send "# 4. 运行100步仿真\r"
+send "engine = MorphSimEngine(config)\r"
+send "spec = loader.get('A-01')\r"
+send "print(f'[{time.time()-start:.1f}s] ✅ 引擎初始化')\r"
+send "print(f'  场景: {spec.name}')\r"
+send "print(f'  难度: {spec.difficulty}')\r"
+send "\r"
+send "# 5. 仿真步进\r"
+send "for i in range(100):\r"
+send "    state = engine.step(np.zeros(12))\r"
+send "    if i % 20 == 0:\r"
+send "        print(f'  Step {i}: pos={state.position}, vel={state.velocity}')\r"
+send "\r"
+send "elapsed = time.time() - start\r"
+send "print(f'\\n=== Demo完成! 耗时{elapsed:.1f}s ===')\r"
+send "print(f'仿真100步, dt=0.01, 总模拟时间: 1.0s')\r"
+send "print(f'实际/模拟比: {elapsed:.1f}x realtime')\r"
+send "\r"
+send "# 保存结果\r"
+send "import json\r"
+send "result = {\r"
+send "    'scenario': 'A-01',\r"
+send "    'steps': 100,\r"
+send "    'wall_time': elapsed,\r"
+send "    'sim_time': 1.0,\r"
+send "    'speed_ratio': elapsed / 1.0,\r"
+send "    'final_position': list(state.position),\r"
+send "    'final_velocity': list(state.velocity),\r"
+send "}\r"
+send "with open('/root/demo_result.json', 'w') as f:\r"
+send "    json.dump(result, f, indent=2)\r"
+send "print('结果已保存到 /root/demo_result.json')\r"
+send "DEMO_EOF\r"
+expect "*#"
+
+# 运行demo
+send "python3 /root/demo.py 2>&1\r"
+expect {
+    "Demo完成" {
+        puts "\n✅ Demo运行成功！"
+    }
+    "Error" {
+        puts "\n❌ Demo运行出错"
+    }
+    "Traceback" {
+        puts "\n❌ Demo运行出错"
+    }
+    timeout {
+        puts "\n❌ Demo超时"
+    }
+}
+expect "*#"
+
+# 查看结果
+send "cat /root/demo_result.json\r"
+expect "*#"
+
+# 退出SSH
+send "exit\r"
+expect eof
+
+# ========== Step 4: 下载结果 ==========
+puts "\n=== Step 4: 下载结果 ==="
+
+spawn scp -o StrictHostKeyChecking=no -P $ssh_port root@$ssh_host:/root/demo_result.json "/Users/du/Library/Application Support/@opensquilla/desktop-electron/opensquilla/state/workspace/eiv-research/projects/R5-EIV-Bench/papers/P3-MorphSim/results/"
+expect "password:"
+send "$ssh_pass\r"
+expect eof
+puts "\n结果下载完成"
+
+# ========== Step 5: 关机释放 ==========
+puts "\n=== Step 5: 关机释放实例 ==="
+
+spawn /usr/bin/python3 -c "
+import requests
+BASE = 'https://api.autodl.com'
+TOKEN = '$token'
+headers = {'Authorization': TOKEN, 'Content-Type': 'application/json'}
+uuid = '$instance_uuid'
+
+# 关机
+resp = requests.post(BASE + '/api/v1/dev/instance/pro/power_off', headers=headers, json={'instance_uuid': uuid})
+print(f'关机: {resp.json()}')
+
+import time
+time.sleep(3)
+
+# 释放
+resp2 = requests.post(BASE + '/api/v1/dev/instance/pro/release', headers=headers, json={'instance_uuid': uuid})
+print(f'释放: {resp2.json()}')
+"
+expect eof
+
+puts "\n============================================================"
+puts "✅ 全流程完成！"
+puts "============================================================"

@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+# 上传MorphSim代码到AutoDL实例
+
+set timeout 120
+set host "connect.westd.seetacloud.com"
+set port "35924"
+set password "gknjW+b/RTtX"
+set local_path "/Users/du/Library/Application Support/@opensquilla/desktop-electron/opensquilla/state/workspace/eiv-research/projects/R5-EIV-Bench/papers/P3-MorphSim"
+
+# 使用scp上传morphsim目录
+spawn scp -o StrictHostKeyChecking=no -P $port -r $local_path/morphsim root@$host:/root/
+
+expect {
+    "password:" {
+        send "$password\r"
+    }
+    timeout {
+        puts "SCP超时"
+        exit 1
+    }
+}
+
+expect {
+    eof {
+        puts "\n代码上传完成！"
+    }
+    timeout {
+        puts "\nSCP上传超时"
+        exit 1
+    }
+}

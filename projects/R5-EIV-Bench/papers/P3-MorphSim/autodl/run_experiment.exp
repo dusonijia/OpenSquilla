@@ -1,0 +1,46 @@
+#!/usr/bin/expect -f
+# SSH运行MorphSim实验
+
+set timeout 600
+set host "connect.westd.seetacloud.com"
+set port "35924"
+set password "gknjW+b/RTtX"
+
+spawn ssh -o StrictHostKeyChecking=no -p $port root@$host
+
+expect "password:"
+send "$password\r"
+expect "*#"
+
+# 检查代码
+send "ls -la /root/morphsim/morphsim/core/\r"
+expect "*#"
+
+# 运行冒烟测试
+send "cd /root/morphsim && python3 -c 'from morphsim.core.engine import MorphSimEngine; print(\"MorphSim导入成功\")'\r"
+expect "*#"
+
+# 如果导入成功，运行实验
+send "python3 -c \"\r"
+send "from morphsim.scenarios.loader import ScenarioLoader\r"
+send "from morphsim.baselines.policies import RigidPolicy\r"
+send "import json\r"
+send "\r"
+send "loader = ScenarioLoader()\r"
+send "registry = loader.get_registry()\r"
+send "print(f'场景数: {len(registry)}')\r"
+send "print(f'场景列表: {list(registry.keys())}')\r"
+send "\r"
+send "# 运行A-01场景\r"
+send "spec = loader.get_scenario('A-01')\r"
+send "print(f'A-01场景: {spec.name}')\r"
+send "print(f'难度: {spec.difficulty}')\r"
+send "print(f'活跃参数: {spec.active_morph_params}')\r"
+send "\r"
+send "print('实验框架验证完成！')\r"
+send "\"\r"
+expect "*#"
+
+# 退出
+send "exit\r"
+expect eof

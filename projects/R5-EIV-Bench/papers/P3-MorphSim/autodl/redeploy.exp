@@ -1,0 +1,47 @@
+#!/usr/bin/expect -f
+# 重新上传修复后的代码并运行
+
+set timeout 300
+set host "connect.westd.seetacloud.com"
+set port "35924"
+set password "gknjW+b/RTtX"
+
+# 1. 上传
+spawn scp -o StrictHostKeyChecking=no -P $port /tmp/morphsim.tar.gz root@$host:/root/
+expect "password:"
+send "$password\r"
+expect eof
+
+# 2. SSH解压并运行
+spawn ssh -o StrictHostKeyChecking=no -p $port root@$host
+expect "password:"
+send "$password\r"
+expect "*#"
+
+# 删除旧代码，解压新的
+send "rm -rf /root/morphsim && cd /root && tar xzf morphsim.tar.gz\r"
+expect "*#"
+
+# 测试导入
+send "PYTHONPATH=/root python3 -c 'from morphsim.core.engine import MorphSimEngine; print(\"✅ MorphSim导入成功！\")'\r"
+expect "*#"
+
+# 测试场景加载
+send "PYTHONPATH=/root python3 -c 'from morphsim.scenarios.loader import ScenarioLoader; loader=ScenarioLoader(); r=loader.get_registry(); print(f\"✅ 场景数: {len(r)}\"); print(f\"场景: {list(r.keys())}\")'\r"
+expect "*#"
+
+# A-01详情
+send "PYTHONPATH=/root python3 -c \"\r"
+send "from morphsim.scenarios.loader import ScenarioLoader\r"
+send "loader = ScenarioLoader()\r"
+send "spec = loader.get_scenario('A-01')\r"
+send "print(f'✅ A-01: {spec.name}')\r"
+send "print(f'   难度: {spec.difficulty}')\r"
+send "print(f'   地形: {spec.terrain_type}')\r"
+send "print(f'   风速: {spec.wind_speed}')\r"
+send "print(f'   活跃参数: {spec.active_morph_params}')\r"
+send "\"\r"
+expect "*#"
+
+send "exit\r"
+expect eof

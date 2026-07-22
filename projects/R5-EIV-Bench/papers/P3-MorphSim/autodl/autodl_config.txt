@@ -1,0 +1,23 @@
+# AutoDL部署配置
+
+# API Token（从AutoDL获取）
+AUTODL_API_TOKEN=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjEwODgzNjEsInV1aWQiOiI2NzRhYTFmYjBkYTYzYmUwIiwidGVuYW50IjoiYXV0b2RsIiwiYXVkIjoiZGV2ZWxvcF9hcGkifQ.JIKWKBdGTHBFVu1v3W6mxGb6-xDX3AhIYF1twfpuxPLBrAExArvv30qWtzyc9XmkTjXtaBaGpBOAENKETkuqiA
+
+# GPU实例配置
+GPU_NAME=RTX4090
+CUDA_VERSION=cu121
+IMAGE_NAME=pytorch-2.3.1-cuda12.1-cudnn8-devel
+
+# 实例时长（小时）
+MAX_RUNTIME_HOURS=24
+
+# 本地代码路径
+LOCAL_CODE_PATH=/Users/du/Library/Application Support/@opensquilla/desktop-electron/opensquilla/state/workspace/eiv-research/projects/R5-EIV-Bench/papers/P3-MorphSim
+
+# 远程工作目录
+REMOTE_WORK_DIR=/root/morphsim
+
+# 实验配置
+RUN_SCENARIOS=A-01,B-01,C-01
+NUM_RUNS_PER_SCENARIO=20
+POLICIES=Rigid,Heuristic,PPO,DiffOpt

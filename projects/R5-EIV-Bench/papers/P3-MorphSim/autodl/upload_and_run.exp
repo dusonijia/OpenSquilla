@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+# 上传tar包并在远程解压运行
+
+set timeout 300
+set host "connect.westd.seetacloud.com"
+set port "35924"
+set password "gknjW+b/RTtX"
+
+# 1. SCP上传tar包
+spawn scp -o StrictHostKeyChecking=no -P $port /tmp/morphsim.tar.gz root@$host:/root/
+expect "password:"
+send "$password\r"
+expect eof
+puts "\n上传完成"
+
+# 2. SSH解压并运行
+spawn ssh -o StrictHostKeyChecking=no -p $port root@$host
+expect "password:"
+send "$password\r"
+expect "*#"
+
+# 删除旧目录，解压新的
+send "rm -rf /root/morphsim && cd /root && tar xzf morphsim.tar.gz && ls -la /root/morphsim/morphsim/core/\r"
+expect "*#"
+
+# 验证文件
+send "find /root/morphsim -name '*.py' | head -20\r"
+expect "*#"
+
+# 运行导入测试
+send "cd /root/morphsim && python3 -c 'from morphsim.core.engine import MorphSimEngine; print(\"MorphSim导入成功！\")'\r"
+expect "*#"
+
+# 运行场景加载测试
+send "python3 -c \"from morphsim.scenarios.loader import ScenarioLoader; loader=ScenarioLoader(); r=loader.get_registry(); print(f'场景数: {len(r)}'); print(f'场景: {list(r.keys())}')\"\r"
+expect "*#"
+
+# 运行A-01场景
+send "python3 -c \"\r"
+send "from morphsim.scenarios.loader import ScenarioLoader\r"
+send "loader = ScenarioLoader()\r"
+send "spec = loader.get_scenario('A-01')\r"
+send "print(f'场景: {spec.name}')\r"
+send "print(f'难度: {spec.difficulty}')\r"
+send "print(f'地形: {spec.terrain_type}')\r"
+send "print(f'风速: {spec.wind_speed}')\r"
+send "print(f'活跃参数: {spec.active_morph_params}')\r"
+send "print('A-01场景加载成功！')\r"
+send "\"\r"
+expect "*#"
+
+send "exit\r"
+expect eof

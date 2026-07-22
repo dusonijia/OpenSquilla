@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+# SSH连接AutoDL实例，上传代码并运行实验
+
+set timeout 300
+set host "connect.westd.seetacloud.com"
+set port "35924"
+set password "gknjW+b/RTtX"
+
+# 1. SSH连接
+spawn ssh -o StrictHostKeyChecking=no -p $port root@$host
+
+# 等待密码提示
+expect {
+    "password:" {
+        send "$password\r"
+    }
+    timeout {
+        puts "SSH连接超时"
+        exit 1
+    }
+}
+
+# 等待命令提示符
+expect {
+    "*#" {
+        puts "SSH连接成功！"
+    }
+    timeout {
+        puts "等待命令提示符超时"
+        exit 1
+    }
+}
+
+# 2. 检查环境
+send "nvidia-smi && python3 --version && pip3 --version\r"
+expect "*#"
+
+# 3. 创建工作目录
+send "mkdir -p /root/morphsim && cd /root/morphsim\r"
+expect "*#"
+
+# 4. 安装依赖
+send "pip3 install torch mujoco numpy scipy tqdm --quiet 2>&1 | tail -5\r"
+expect "*#"
+
+# 5. 检查安装结果
+send "python3 -c 'import torch; print(f\"PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}\")'\r"
+expect "*#"
+
+# 6. 创建MorphSim代码目录结构
+send "mkdir -p morphsim/core morphsim/baselines morphsim/training morphsim/evaluation morphsim/scenarios\r"
+expect "*#"
+
+# 7. 输出环境信息
+send "echo '=== Environment Ready ===' && nvidia-smi --query-gpu=name,memory.total --format=csv\r"
+expect "*#"
+
+# 8. 退出
+send "exit\r"
+expect eof
+puts "\nSSH会话结束"

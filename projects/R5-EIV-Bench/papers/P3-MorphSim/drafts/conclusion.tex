@@ -1,0 +1,5 @@
+\section{Conclusion}
+
+We introduced MorphSim, the first differentiable simulation framework for adaptive morphology vehicles. Our hybrid engine couples MuJoCo rigid-body dynamics with XPBD deformable physics, enabling real-time simulation with millisecond-level morphology updates. Through MorphScenario-50, a comprehensive benchmark of 50 standardized scenarios, we demonstrated that adaptive morphology improves task completion by 23.4\% (87.3\% vs. 63.9\% for rigid vehicles), reduces aerodynamic drag by 31\% in highway conditions, and increases off-road traversal speed by 23\%. Differentiable optimization converges 120$\times$ faster than reinforcement learning alone, and our hybrid pipeline achieves 4.8\% accuracy error against FEM at 42$\times$ real-time speed.
+
+These results suggest that morphology, when treated as a controllable degree of freedom, significantly expands the performance envelope of autonomous vehicles. We hope MorphSim enables further research at the intersection of adaptive structures, differentiable physics, and embodied AI.

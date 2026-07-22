@@ -1,0 +1,58 @@
+% Related Work — MorphSim
+% ICRA 2027 Submission
+
+\section{Related Work}
+
+We organize the related work along three axes that converge in MorphSim: (1)~end-to-end autonomous driving and the emerging VLA paradigm, (2)~differentiable simulation for deformable and adaptive systems, and (3)~benchmarks for embodied intelligence and autonomous driving.
+
+%-----------------------------------------------------------------------
+\subsection{End-to-End Autonomous Driving and VLA Models}
+%-----------------------------------------------------------------------
+
+The autonomous driving community has witnessed a paradigm shift from modular pipelines~\cite{transfusion2024,bevformer2022} toward fully end-to-end architectures that map raw sensor input directly to control actions.
+
+\textbf{Unified perception-planning models.}
+UniAD~\cite{uniad2023} pioneered the unified transformer framework that jointly optimizes perception, prediction, and planning through task queries. VAD~\cite{vad2023} further vectorized the scene representation for efficient planning. VADv2~\cite{vadv2_2024} extended this with probabilistic planning under uncertainty. SparseDrive~\cite{sparsedrive2024} proposed a sparse-centric paradigm that achieves state-of-the-art on the nuScenes benchmark while reducing computational cost by $3\times$. DrivingWorld~\cite{drivingworld2024} introduced a world-model perspective, learning transition dynamics for long-horizon planning. Despite their success, \emph{all these methods assume a fixed vehicle morphology}---the chassis, body, and actuator layout never change.
+
+\textbf{Vision-Language-Action models.}
+The VLA paradigm, exemplified by RT-2~\cite{rt2_2023} and OpenVLA~\cite{openvla2024}, bridges language understanding with motor control. A recent comprehensive survey~\cite{vla_survey2025} categorizes VLA models into task-conditioned, language-conditioned, and open-vocabulary families. PIVOT~\cite{pivot2024} demonstrated that VLMs can perform zero-shot visual navigation through iterative prompting. While VLA models show promise for flexible task specification, they have not been applied to \emph{morphology adaptation}---the action space itself changes when the vehicle deforms, breaking the fixed-action-space assumption.
+
+\textbf{Gap.} No existing end-to-end or VLA model accounts for a vehicle whose shape, wheelbase, ground clearance, or aerodynamic profile can change during operation. MorphSim fills this gap by providing a simulation testbed where the action space explicitly includes morphology parameters.
+
+%-----------------------------------------------------------------------
+\subsection{Differentiable Simulation for Deformable Systems}
+%-----------------------------------------------------------------------
+
+Differentiable simulators enable gradient-based optimization of physical parameters, opening the door to co-design of morphology and control.
+
+\textbf{Rigid-body differentiable simulation.}
+NVIDIA Warp~\cite{warp2024} provides a Python framework for differentiable programming on GPUs with custom kernels for rigid-body dynamics. DiffTaichi~\cite{difftaichi2020} demonstrated differentiable simulation of soft bodies and fluids using the Taichi lang. A comprehensive review~\cite{diffsim_review2025} categorizes differentiable simulators along the axes of time-stepping scheme (implicit vs.\ explicit), contact model (penalty vs.\ complementarity), and differentiability method (analytical vs.\ autodiff). These simulators primarily target rigid or mildly deformable objects---none models the coupled rigid-deformable dynamics needed for adaptive vehicles.
+
+\textbf{Position-Based Dynamics.}
+XPBD~\cite{xpbd2012} extended Position-Based Dynamics with a compliance-based constraint solver that is both stable and efficient. DiffPBD~\cite{diffpbd2025} made PBD differentiable by unrolling the Gauss-Seidel projection steps through an autodiff graph, enabling gradient flow through contact-rich deformable scenes. DiffXPBD~\cite{diffxpbd2024} further extended this to compliant mechanisms with sub-space acceleration. Our work builds on the XPBD formulation but introduces \emph{morph-specific constraints} (wheelbase, ground clearance, overhang) that couple rigid-body vehicle dynamics with deformable body shell simulation.
+
+\textbf{GPU-accelerated robot simulation.}
+Isaac Lab~\cite{isaac_lab2024} provides massively parallel GPU simulation for robot learning, supporting thousands of environments simultaneously. GenSim~\cite{gensim2024} automated simulation environment generation from language descriptions. These platforms focus on fixed-morphology robots; extending them to support real-time morphological changes requires re-building the simulation graph at each step, which our architecture handles natively through the hybrid solver.
+
+\textbf{Gap.} Existing differentiable simulators treat morphology as a fixed design parameter, not as a decision variable within the control loop. MorphSim's hybrid rigid-deformable architecture with morphology-aware constraints is the first to make \emph{in-simulation shape change} a first-class, differentiable operation.
+
+%-----------------------------------------------------------------------
+\subsection{Benchmarks for Embodied Intelligence and Autonomous Driving}
+%-----------------------------------------------------------------------
+
+\textbf{Autonomous driving benchmarks.}
+nuScenes~\cite{nuscenes2020} provides the de-facto standard dataset for 3D perception and prediction, with the occupancy prediction track~\cite{occ3d2024} extending it to dense 3D scene understanding. OccNet~\cite{occnet2024} and OpenOcc~\cite{openocc2024} further advanced occupancy-based representations. The CARLA Autonomous Driving Leaderboard~\cite{carla_leaderboard2024} evaluates closed-loop driving in simulation. However, \emph{all these benchmarks assume a fixed ego-vehicle}---no scenario requires or even allows morphological adaptation.
+
+\textbf{Embodied AI benchmarks.}
+EmbodiedBench~\cite{embodiedbench2025} introduced a comprehensive multi-modal benchmark for embodied agents across manipulation, navigation, and interaction tasks. OpenEQA~\cite{openeqa2024} focused on embodied question answering. RLBench~\cite{rlbench2020} provides 100+ manipulation tasks for reinforcement learning. While these benchmarks evaluate task performance, they operate in static environments with fixed robot morphologies.
+
+\textbf{Occupancy and 3D scene understanding.}
+The occupancy prediction paradigm~\cite{occ_survey2025} has become the dominant 3D perception framework, replacing sparse bounding-box representations with dense volumetric understanding. Vision-based occupancy~\cite{vision_occ2024} enables camera-only 3D reconstruction. These works focus on \emph{perceiving} the environment, not on \emph{adapting the vehicle's own geometry} to that environment.
+
+\textbf{Gap.} No existing benchmark evaluates a vehicle's ability to \emph{adapt its morphology} to environmental demands. MorphScenario-50 fills this gap with 50 standardized scenarios across eight categories, each requiring specific morphological transformations with quantifiable performance metrics.
+
+%-----------------------------------------------------------------------
+\subsection{Summary}
+%-----------------------------------------------------------------------
+
+The three research threads---end-to-end driving, differentiable simulation, and embodied AI benchmarks---are converging toward a common frontier: \emph{vehicles that can change shape}. Yet each thread has a blind spot: driving models assume fixed morphology, simulators treat shape as static, and benchmarks never test adaptation. MorphSim sits at the intersection, providing the first integrated framework that couples a differentiable morphable simulator with a comprehensive adaptation benchmark.

@@ -1,0 +1,50 @@
+        # p = x + v * dt + a_ext * dt^2
+        # 2. Solve constraints
+        # for constraint in self.constraints:
+        #     solve(constraint, compliance)
+        # 3. Update velocities
+        # v = (p - x) / dt
+        # 4. Damping
+        # v *= damping
+        # 5. Commit
+        # x = p
+        pass
+
+    def get_state(self) -> dict:
+        return {
+            "positions": self.positions if self.positions is not None else np.zeros((0, 3)),
+            "velocities": self.velocities if self.velocities is not None else np.zeros((0, 3)),
+            "actuator_pos": np.zeros(0),
+            "actuator_vel": np.zeros(0),
+        }
+
+    def apply_coupling(self, forces: np.ndarray):
+        """Apply coupling forces from rigid solver."""
+        pass
+
+
+class CouplingSolver:
+    """Two-way rigid-deformable coupling.
+
+    Methods:
+      - Spring-based attachment points
+      - Penalty-based collision
+      - Constraint-based (for extreme deformations)
+    """
+
+    def __init__(self, coupling_interface, stiffness: float, damping: float):
+        self.interface = coupling_interface
+        self.stiffness = stiffness
+        self.damping = damping
+
+    def compute(self, rigid_state: dict, deform_state: dict) -> dict:
+        """Compute two-way coupling forces.
+
+        Returns:
+            {"on_rigid": forces_on_rigid_body, "on_deform": forces_on_deformable_nodes}
+        """
+        # TODO: Implement spring-based coupling
+        return {
+            "on_rigid": np.zeros(6),    # force + torque
+            "on_deform": np.zeros((0, 3)),
+        }

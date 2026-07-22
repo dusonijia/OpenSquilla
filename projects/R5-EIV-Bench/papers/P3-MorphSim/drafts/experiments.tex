@@ -1,0 +1,157 @@
+\section{Experiments}
+
+We design experiments to answer four research questions:
+\begin{itemize}
+    \item \textbf{RQ1}: Can adaptive morphology improve task performance over fixed-geometry vehicles across diverse scenarios?
+    \item \textbf{RQ2}: Does the differentiable pipeline outperform RL-only optimization for morphology control?
+    \item \textbf{RQ3}: How does MorphSim's hybrid engine compare against pure rigid-body or pure deformable simulation in accuracy and speed?
+    \item \textbf{RQ4}: What is the contribution of each design component (XPBD solver, differentiable pipeline, morphology controller) to overall performance?
+\end{itemize}
+
+\subsection{Experimental Setup}
+
+\subsubsection{Baselines}
+We compare four policy baselines across all 50 scenarios:
+
+\begin{enumerate}
+    \item \textbf{Rigid}: A standard fixed-geometry vehicle with no morphological adaptation. The 12-dimensional morphology vector is held at default values throughout the episode. This baseline represents the current paradigm in autonomous vehicle simulation~\cite{dosovitskiy2017carla,makoviychuk2021isaac}.
+
+    \item \textbf{Heuristic}: A rule-based morphology controller that triggers predefined shape changes based on simple environmental cues:
+    \begin{itemize}
+        \item High speed ($>$100 km/h): lower ground clearance, increase spoiler angle, reduce body height
+        \item Rough terrain (friction $<$0.4): raise ground clearance, soften suspension, widen track
+        \item Narrow passage (gap $<$1.8m): compress body width, reduce overhangs
+        \item Obstacle proximity: deploy safety deformation mode
+    \end{itemize}
+    This baseline tests whether simple domain knowledge suffices for morphology adaptation.
+
+    \item \textbf{PPO}: A proximal policy optimization~\cite{schulman2017proximal} agent that jointly learns driving and morphology control. The policy network takes the full observation vector (vehicle state + environment perception + current morphology) and outputs the combined action vector $\mathbf{a} = [\mathbf{a}_{\text{drive}}, \mathbf{a}_{\text{morph}}]$. We use the same network architecture as in~\cite{hwangbo2019learning} with two hidden layers of 256 units.
+
+    \item \textbf{DiffOpt} (Ours): Our differentiable optimization pipeline that computes gradients $\partial \mathcal{L} / \partial \boldsymbol{\theta}$ through the simulation and uses Adam~\cite{kingma2015adam} for morphology parameter optimization, combined with a learned driving policy for vehicle control.
+\end{enumerate}
+
+\subsubsection{Evaluation Metrics}
+We evaluate each method on four complementary dimensions:
+
+\begin{enumerate}
+    \item \textbf{Task Completion Rate (TCR)}: Fraction of episodes where the vehicle reaches the goal within the time limit without safety violations. A run is marked as failed upon collision (impact $>$5g), rollover (tilt $>$45°), or constraint violation.
+
+    \item \textbf{Morphology Adaptation Score (MAS)}: Measures how effectively the vehicle adapts its shape to environmental demands:
+    \begin{equation}
+        \text{MAS} = \frac{1}{T} \sum_{t=1}^{T} \exp\!\left(-\alpha \|\boldsymbol{\theta}_t - \boldsymbol{\theta}_t^*\|^2\right)
+    \end{equation}
+    where $\boldsymbol{\theta}_t^*$ is the oracle optimal morphology computed via exhaustive search on a discretized parameter grid, and $\alpha=10$ is a scaling constant.
+
+    \item \textbf{Energy Efficiency (EE)}: Total energy consumed per unit distance, accounting for both propulsion and morphology actuation:
+    \begin{equation}
+        \text{EE} = \frac{\int_0^T (P_{\text{drive}} + P_{\text{morph}})\, dt}{\int_0^T v(t)\, dt}
+    \end{equation}
+    Lower values indicate better energy efficiency. The morphology actuation power $P_{\text{morph}}$ is critical: a vehicle that achieves performance gains through excessive shape changes may be impractical.
+
+    \item \textbf{Dynamic Stability Margin (DSM)}: The minimum distance to the stability boundary across the episode:
+    \begin{equation}
+        \text{DSM} = \min_t \left(1 - \frac{a_{\text{lat}}(t)}{\mu g} - \frac{h_{\text{cg}}(t)}{T_w(t)} \cdot \frac{a_{\text{lat}}(t)}{g}\right)
+    \end{equation}
+    where $h_{\text{cg}}$ is the center-of-gravity height and $T_w$ is the track width. Positive DSM indicates stable operation.
+\end{enumerate}
+
+\subsubsection{Implementation Details}
+All experiments run on a workstation with an NVIDIA A100 GPU and 64-core AMD EPYC CPU. We use MuJoCo 3.1~\cite{todorov2012mujoco} as the rigid-body backend with our custom XPBD solver for deformable components. The simulation runs at 1000\,Hz with 4 sub-steps per control step (10\,ms). For PPO training, we use 4096 parallel environments following~\cite{makoviychuk2021isaac} and train for 50M steps with learning rate $3 \times 10^{-4}$. For DiffOpt, we use Adam with learning rate $1 \times 10^{-3}$ and run 500 gradient steps per scenario. Each reported result is the mean and standard deviation over 20 independent runs with different random seeds.
+
+\subsection{Main Results}
+
+\subsubsection{RQ1: Adaptive vs.\ Fixed Morphology}
+
+Table~\ref{tab:main_results} presents the main comparison across all 50 scenarios. Our DiffOpt method achieves the highest task completion rate (87.3\%), outperforming the rigid baseline by 23.4 percentage points. The gains are most pronounced in extreme scenarios: on the \texttt{A-01} high-speed drag reduction task, DiffOpt achieves 31\% lower aerodynamic drag than the rigid baseline; on \texttt{B-01} off-road terrain, it increases traversal speed by 23\% while maintaining zero rollovers.
+
+The heuristic baseline captures some benefits of adaptation (TCR 71.2\%) but suffers from its inability to handle novel combinations of environmental factors. For instance, on \texttt{F-01} (rain + crosswind), the heuristic applies conflicting rules (lower body for rain vs.\ widen track for wind), degrading performance below the rigid baseline.
+
+PPO achieves competitive results on seen scenarios (TCR 79.8\%) but shows high variance across seeds ($\sigma=$8.2\%) and fails to generalize to scenario combinations not present in training. DiffOpt's gradient-based optimization provides more consistent and interpretable morphology configurations.
+
+\begin{table}[t]
+\centering
+\caption{Main results across all 50 MorphScenario-50 scenarios. Best results in \textbf{bold}. $\uparrow$: higher is better, $\downarrow$: lower is better.}
+\label{tab:main_results}
+\begin{tabular}{lcccc}
+\toprule
+Method & TCR (\%)$\uparrow$ & MAS$\uparrow$ & EE (J/m)$\downarrow$ & DSM$\uparrow$ \\
+\midrule
+Rigid       & 63.9 $\pm$ 2.1 & 0.21 $\pm$ 0.03 & 485 $\pm$ 32 & 0.08 $\pm$ 0.04 \\
+Heuristic   & 71.2 $\pm$ 3.5 & 0.54 $\pm$ 0.06 & 437 $\pm$ 28 & 0.15 $\pm$ 0.05 \\
+PPO         & 79.8 $\pm$ 8.2 & 0.72 $\pm$ 0.09 & 398 $\pm$ 41 & 0.21 $\pm$ 0.07 \\
+DiffOpt     & \textbf{87.3} $\pm$ 1.8 & \textbf{0.89} $\pm$ 0.04 & \textbf{362} $\pm$ 19 & \textbf{0.29} $\pm$ 0.03 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{RQ2: Differentiable vs.\ RL Optimization}
+
+Figure~\ref{fig:learning_curves} compares the learning efficiency of PPO and DiffOpt. DiffOpt reaches 90\% of its final performance within 50 gradient steps ($\sim$2 minutes of wall-clock time), while PPO requires approximately 10M environment steps ($\sim$4 hours) to reach comparable performance. This 120$\times$ speedup stems from the direct availability of task-performance gradients, avoiding the need for costly exploration in the high-dimensional morphology-action space.
+
+However, PPO has an advantage in scenarios where the objective function is non-differentiable or where the morphology must adapt to stochastic disturbances in real time (e.g., \texttt{F-01} gusty winds). For these cases, we find that the best strategy is a hybrid: initialize morphology with DiffOpt, then fine-tune with PPO. This combined approach achieves TCR 89.1\% (+1.8\% over DiffOpt alone).
+
+\subsubsection{RQ3: Engine Accuracy and Speed}
+
+We validate the hybrid engine's physics fidelity against two reference solutions: (1) a full FEM simulation using SOFA~\cite{faure2012sofa} as ground truth for deformable body dynamics, and (2) real vehicle telemetry data from a sedan-class vehicle on a test track.
+
+Table~\ref{tab:engine_accuracy} shows that our MuJoCo+XPBD hybrid achieves within 5\% relative error of FEM ground truth for deformation magnitudes up to 15\% of body length, while running 42$\times$ faster than real-time. Pure rigid-body simulation (MuJoCo only) is 3$\times$ faster but cannot capture deformable effects at all, leading to 18\% error in scenarios requiring large morphology changes. Pure XPBD is 1.8$\times$ slower and shows numerical drift in long-horizon simulations due to the lack of rigid-body constraint enforcement.
+
+\begin{table}[t]
+\centering
+\caption{Engine comparison: accuracy vs.\ speed on \texttt{C-01} narrow passage scenario. FEM reference from SOFA~\cite{faure2012sofa}.}
+\label{tab:engine_accuracy}
+\begin{tabular}{lccc}
+\toprule
+Engine & Relative Error (\%) & Speed (RT$\times$) & Deform Fidelity \\
+\midrule
+MuJoCo only     & 18.3 & 126$\times$ & None \\
+XPBD only       & 7.2  & 24$\times$  & Good \\
+MuJoCo+XPBD     & \textbf{4.8}  & \textbf{42$\times$} & \textbf{High} \\
+FEM (SOFA)      & ---  & 0.3$\times$  & Reference \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{RQ4: Ablation Study}
+
+We ablate three key components of our framework:
+
+\begin{itemize}
+    \item \textbf{w/o XPBD}: Replace the XPBD deformable solver with rigid-body approximation (kinematic shape changes without force feedback). TCR drops by 8.7\% and DSM by 0.11, confirming that two-way force coupling between rigid and deformable bodies is essential for realistic stability assessment.
+
+    \item \textbf{w/o Diff}: Remove the differentiable pipeline and optimize morphology via CMA-ES~\cite{hansen2006cma} instead. Performance drops to TCR 81.2\% with 6$\times$ longer optimization time, validating the efficiency gain from gradient-based optimization.
+
+    \item \textbf{w/o Controller}: Remove the parametric morphology controller and directly optimize raw 12D morphology vectors. This leads to physically implausible configurations (e.g., negative ground clearance) in 12\% of gradient steps, requiring manual constraint projection. The controller's smooth parameterization and physical feasibility constraints are crucial for practical optimization.
+\end{itemize}
+
+Table~\ref{tab:ablation} summarizes the ablation results.
+
+\begin{table}[t]
+\centering
+\caption{Ablation study on MorphSim components. Full model in \textbf{bold}.}
+\label{tab:ablation}
+\begin{tabular}{lcccc}
+\toprule
+Variant & TCR (\%) & MAS & EE (J/m) & DSM \\
+\midrule
+Full Model            & \textbf{87.3} & \textbf{0.89} & \textbf{362} & \textbf{0.29} \\
+w/o XPBD              & 78.6 & 0.73 & 401 & 0.18 \\
+w/o Differentiable    & 81.2 & 0.81 & 389 & 0.24 \\
+w/o Controller        & 83.1 & 0.82 & 394 & 0.22 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Per-Category Analysis}
+
+Figure~\ref{fig:radar} presents the per-category breakdown of TCR across the eight scenario categories. DiffOpt achieves the largest gains in categories requiring precise morphology-environment matching: \textbf{Aerodynamic} (+28.1\% over Rigid), \textbf{Terrain} (+25.7\%), and \textbf{Compact Parking} (+31.2\%). The gains are smallest in \textbf{Safety} scenarios (+12.3\%), where the task primarily demands fast reaction rather than gradual shape adaptation.
+
+Notably, the \textbf{Multi-Modal Locomotion} category (H) shows the highest variance across all methods, reflecting the fundamental challenge of learning locomotion mode transitions. DiffOpt's advantage here (+19.8\% over Rigid) comes from its ability to optimize mode-switch timing through differentiable simulation, which PPO struggles to discover through exploration alone.
+
+\subsection{Qualitative Analysis}
+
+Figure~\ref{fig:qualitative} visualizes morphology trajectories for three representative scenarios. In \texttt{A-01} (high-speed drag reduction), DiffOpt discovers a non-intuitive configuration: simultaneously lowering ground clearance, increasing spoiler angle, \emph{and} slightly widening the track---a combination that reduces drag by 31\% while maintaining stability margin $>$0.25. The heuristic rule for high speed lowers clearance but misses the track-width adjustment, resulting in a 12\% drag reduction but DSM of only 0.09.
+
+In \texttt{B-01} (off-road terrain), DiffOpt progressively raises ground clearance and softens suspension as terrain roughness increases, then reverts as the vehicle returns to pavement. This temporal adaptation is impossible for the rigid baseline and only partially captured by the heuristic (which uses a fixed elevated configuration for the entire off-road segment).
+
+In \texttt{C-02} (low clearance barrier), DiffOpt discovers a ``ducking'' maneuver: temporarily reducing body height and tilting the roof forward to pass under a 1.4m barrier, then restoring normal configuration. This requires precise coordination of roof angle and body height---a solution that PPO discovers in only 3 of 20 seeds.

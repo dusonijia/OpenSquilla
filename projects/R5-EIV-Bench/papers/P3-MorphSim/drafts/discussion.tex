@@ -1,0 +1,13 @@
+\section{Discussion}
+
+\subsection{Limitations}
+Our work has four primary limitations. First, XPBD accuracy is bounded by the finite particle resolution and substep iterations; while we achieve 4.8\% error against FEM on standard benchmarks (Table II), scenarios involving extreme deformation or high-frequency impact may exhibit larger discrepancies \cite{diffxpbd_2023}. Second, the aerodynamic model uses a quasi-steady-state approximation, neglecting transient vortex shedding effects \cite{activeaero_2024}. Third, our morphological space is currently limited to 12 parameters; real-world adaptation would require higher-dimensional parameterization (e.g., continuous surface morphing). Fourth, the 50-scenario benchmark, while spanning eight categories, does not cover all edge cases (e.g., ice-road dynamics or multi-vehicle platooning).
+
+\subsection{Safety Considerations}
+MorphSim is fundamentally a research simulator, not a safety-certified tool. Our stability margin metric (DSM) and collision detection provide task-level safety feedback but cannot replace formal verification methods required for automotive deployment \cite{chen2021safe}. Future work should integrate formal methods (e.g., reachability analysis \cite{endtoend_survey_2025}) and uncertainty quantification for actuator failure modes.
+
+\subsection{Broader Implications}
+The ability to optimize morphology jointly with control has implications beyond autonomous driving. Our framework could be extended to (1) aerial vehicles with morphing wings \cite{morphingwing_2024}, (2) legged robots with adaptive limb compliance \cite{pivotal_2024}, and (3) spacecraft with deployable structures. Moreover, differentiable simulation bridges the gap between design-time optimization and runtime adaptation, potentially enabling \"self-evolving\" vehicle architectures.
+
+\subsection{Future Work}
+We plan to expand MorphSim in four directions: (1) higher-fidelity aerodynamic coupling via fluid-structure interaction (FSI) simulation \cite{warp_2024}, (2) multi-agent scenarios for platoon-level morphing coordination, (3) sim-to-real transfer with domain randomization \cite{isaacgym_2024}, and (4) open-source release of the full 50-scenario benchmark and pretrained policies.

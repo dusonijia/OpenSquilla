@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+# 运行MorphSim场景测试
+
+set timeout 300
+set host "connect.westd.seetacloud.com"
+set port "35924"
+set password "gknjW+b/RTtX"
+
+spawn ssh -o StrictHostKeyChecking=no -p $port root@$host
+expect "password:"
+send "$password\r"
+expect "*#"
+
+# 列出所有场景
+send "PYTHONPATH=/root python3 -c \"\r"
+send "from morphsim.scenarios.loader import ScenarioLoader\r"
+send "loader = ScenarioLoader()\r"
+send "cats = loader.list_categories()\r"
+send "print(f'✅ 场景分类: {cats}')\r"
+send "scenarios = loader.list_scenarios()\r"
+send "print(f'✅ 总场景数: {len(scenarios)}')\r"
+send "print(f'场景列表: {scenarios}')\r"
+send "\"\r"
+expect "*#"
+
+# 加载A-01
+send "PYTHONPATH=/root python3 -c \"\r"
+send "from morphsim.scenarios.loader import ScenarioLoader\r"
+send "loader = ScenarioLoader()\r"
+send "spec = loader.get('A-01')\r"
+send "print(f'✅ A-01: {spec.name}')\r"
+send "print(f'   难度: {spec.difficulty}')\r"
+send "print(f'   地形: {spec.terrain_type}')\r"
+send "print(f'   风速: {spec.wind_speed}')\r"
+send "print(f'   活跃参数: {spec.active_morph_params}')\r"
+send "\"\r"
+expect "*#"
+
+# 运行简单仿真
+send "PYTHONPATH=/root python3 -c \"\r"
+send "from morphsim.core.engine import MorphSimEngine, SimConfig\r"
+send "from morphsim.core.vehicle import MorphableVehicle, MorphMode\r"
+send "import torch\r"
+send "print('=== MorphSim GPU仿真测试 ===')\r"
+send "print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')\r"
+send "print(f'GPU: {torch.cuda.get_device_name(0)}')\r"
+send "config = SimConfig(dt=0.01, n_substeps=10)\r"
+send "print(f'✅ SimConfig: dt={config.dt}, substeps={config.n_substeps}')\r"
+send "vehicle = MorphableVehicle()\r"
+send "print(f'✅ Vehicle: {vehicle}')\r"
+send "print('=== 测试完成 ===')\r"
+send "\"\r"
+expect "*#"
+
+send "exit\r"
+expect eof

@@ -1,0 +1,64 @@
+% MorphSim: A Differentiable Simulation Framework for Adaptive Morphology Vehicles
+% ICRA 2027 Submission
+
+\documentclass[10pt, review]{article}
+
+% Packages
+\usepackage[preprint]{neurips_2024}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% Hyperlink setup
+\hypersetup{
+    colorlinks,
+    linkcolor={blue},
+    citecolor={blue},
+    urlcolor={blue}
+}
+
+% Title information
+\title{MorphSim: A Differentiable Simulation Framework for \\ Adaptive Morphology Vehicles}
+
+\author{
+    Anonymous Authors \\
+    Anonymous Institution \\
+    \texttt{anonymous@example.com}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Autonomous vehicles have historically treated morphology as fixed, limiting performance across diverse environments like highways, off-road terrain, and urban spaces. We introduce MorphSim, the first differentiable simulation framework for adaptive morphology vehicles, enabling joint optimization of geometry, suspension, and aerodynamic properties through gradient-based methods or reinforcement learning. Our hybrid engine couples rigid-body dynamics with extended position-based dynamics (XPBD) for deformable components, supporting real-time simulation with millisecond-level morphology updates. We present MorphScenario-50, a benchmark suite of 50 standardized scenarios across eight categories to evaluate task completion, morphology adaptation, energy efficiency, and safety. Experiments on four baselines show that adaptive morphology reduces aerodynamic drag by 31\%, increases off-road traversal speed by 23\%, and maintains zero rollovers across extreme terrain. MorphSim provides a foundation for developing and validating next-generation vehicles that physically adapt to their environment.
+\end{abstract}
+
+\section{Introduction}
+\input{introduction.tex}
+
+\bibliographystyle{neurips_2024}
+\bibliography{references}
+
+% \section{Discussion}
+% \input{discussion.tex}
+
+% \section{Conclusion}
+% \input{conclusion.tex}
+
+% \section*{References}
+% \bibliographystyle{neurips_2024}
+% \bibliography{references}
+
+\end{document}

@@ -1,0 +1,34 @@
+\section{Introduction}
+
+Autonomous driving has achieved remarkable progress through end-to-end perception-planning paradigms~\cite{uniad2023,vad2023,sparsedrive2024,drivelm2024}, yet virtually all deployed systems assume a \emph{fixed vehicle morphology}---the chassis, body, and suspension remain static regardless of driving conditions.
+In nature, organisms adapt their body shape to the environment: birds sweep wings for efficiency and tuck them for maneuverability; quadrupeds crouch for stability and stretch for speed~\cite{biewener2003,morphbio2024}.
+This biological principle suggests a paradigm shift: \emph{what if a vehicle could actively adapt its shape, ride height, wheelbase, and aerodynamic surfaces in response to the driving scenario?}
+Recent concept studies in active aerodynamics~\cite{morphaero2025,adaptvehicle2024} and reconfigurable chassis~\cite{reconfchassis2024} hint at this possibility, but a fundamental question remains open: \textbf{how should we systematically simulate, evaluate, and optimize adaptive-morphology vehicles?}
+
+Current simulation platforms fall short of answering this question.
+High-fidelity driving simulators such as CARLA~\cite{carla2025} and NVIDIA Isaac Sim~\cite{isaacsim2024} provide rich sensor suites and traffic scenarios, but treat the ego vehicle as a rigid body with immutable dimensions.
+Soft-body and deformable-object simulators like SoftGym~\cite{softgym2020}, PlasticineLab~\cite{plasticinelab2021}, and DiffRedMax~\cite{diffredmax2022} support shape changes but lack vehicle dynamics, terrain interaction, and traffic-aware scenarios.
+Differentiable physics engines---NVIDIA Warp~\cite{warp2024}, NimbleSim~\cite{nimblesim2023}, and DiffSim~\cite{diffsim2024}---enable gradient-based optimization through simulation but have never been applied to coupled rigid-deformable vehicle systems.
+\textbf{No existing framework simultaneously supports (1) realistic vehicle dynamics, (2) deformable body simulation, (3) differentiability for policy optimization, and (4) scenario-driven benchmarking.}
+
+We introduce \textbf{MorphSim}, a differentiable simulation framework for adaptive-morphology vehicles that closes this gap.
+MorphSim couples a MuJoCo-based rigid-body solver for vehicle chassis dynamics with an XPBD-based deformable solver~\cite{xpbd2021,diffxpbd2024} for morphing body panels, connected through a bidirectional force-coupling interface.
+A differentiable pipeline enables gradient back-propagation from task-level rewards through morphology parameters to the physics simulation, supporting both reinforcement learning (PPO~\cite{ppo2017}, SAC~\cite{sac2018}) and gradient-based morphology optimization.
+We define a 12-dimensional morphology space spanning body dimensions, suspension, aerodynamic surfaces, and track configuration, and introduce \textbf{MorphScenario-50}, a benchmark suite of 50 standardized scenarios across eight categories (aerodynamic adaptation, terrain traversal, spatial reconfiguration, crash safety, compact parking, weather response, load adaptation, and multi-modal locomotion) to evaluate task completion, morphology adaptation quality, energy efficiency, and safety compliance.
+
+Experiments with four baselines---Fixed-Shape, Rule-Based, PPO, and Differentiable Optimization---demonstrate that adaptive morphology yields substantial benefits: 31\% aerodynamic drag reduction at 120\,km/h, 23\% higher off-road traversal speed, zero rollover incidents across 50 scenarios (vs.\ 8 for fixed-shape), and 19\% lower energy consumption.
+To our knowledge, MorphSim is the first framework that enables systematic research on the interplay between vehicle morphology adaptation and driving intelligence, positioning it as a core component of the broader EIV-Bench~\cite{eivbench2026} evaluation ecosystem for Embodied Intelligent Vehicles.
+
+Our contributions are:
+\begin{enumerate}
+    \item \textbf{MorphSim Engine}: a hybrid rigid-deformable differentiable simulation framework for adaptive-morphology vehicles, coupling MuJoCo rigid-body dynamics with XPBD soft-body simulation through a bidirectional force interface.
+    \item \textbf{Differentiable Morphology Pipeline}: gradient-based optimization that back-propagates through 12-dimensional morphology parameters to task-level objectives, enabling joint policy-morphology co-optimization.
+    \item \textbf{MorphScenario-50}: the first standardized benchmark for evaluating adaptive-morphology vehicles across 50 scenarios in eight categories with 22 evaluation metrics.
+\end{enumerate}
+
+The remainder of this paper is organized as follows.
+Section~\ref{sec:related} reviews related work.
+Section~\ref{sec:method} presents the MorphSim framework.
+Section~\ref{sec:benchmark} details MorphScenario-50.
+Section~\ref{sec:experiments} reports experimental results.
+Section~\ref{sec:discussion} discusses findings and limitations.

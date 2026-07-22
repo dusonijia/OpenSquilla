@@ -1,0 +1,161 @@
+% 3. Method: MorphSim Framework
+% MorphSim: A Differentiable Simulation Framework for Adaptive Morphology Vehicles
+
+\section{MorphSim Framework}
+\label{sec:method}
+
+We present MorphSim, a differentiable simulation framework that enables gradient-based optimization of vehicle morphology alongside control policies. The framework consists of four core components: (1) a hybrid physics engine coupling rigid-body dynamics with XPBD deformable-body simulation (\S\ref{sec:engine}), (2) a parametric morphology representation with differentiable actuators (\S\ref{sec:morphology}), (3) a scenario suite with structured difficulty progression (\S\ref{sec:scenarios}), and (4) a co-optimization pipeline for simultaneous shape-policy learning (\S\ref{sec:coopt}).
+
+\subsection{Hybrid Physics Engine}
+\label{sec:engine}
+
+\paragraph{Rigid-Body Backbone.}
+We build on MuJoCo~\citep{todorov2012mujoco} as the rigid-body dynamics backbone, leveraging its contact-rich simulation, stable constraint solving, and GPU-accelerated batch rendering via MuJoCo XLA (MJX)~\citep{deepmind2024mjx}. For $N$ rigid bodies with generalized coordinates $\mathbf{q} \in \mathbb{R}^{n_q}$, the equation of motion is:
+\begin{equation}
+    M(\mathbf{q})\ddot{\mathbf{q}} + C(\mathbf{q}, \dot{\mathbf{q}})\dot{\mathbf{q}} + g(\mathbf{q}) = \tau + J_c^\top \lambda_c
+    \label{eq:eom}
+\end{equation}
+where $M$ is the mass matrix, $C$ captures Coriolis and centrifugal effects, $g$ is the gravitational term, $\tau$ are actuation forces, and $J_c^\top \lambda_c$ encodes contact impulses from the solver.
+
+\paragraph{XPBD Deformable Extension.}
+To simulate soft morphing structures (e.g., pneumatic surfaces, elastomeric joints), we extend the engine with an Extended Position-Based Dynamics (XPBD)~\citep{macklin2016xpbd} solver that operates on a particle system $\{\mathbf{x}_i\}_{i=1}^{P}$ connected by compliance constraints. Each constraint $k$ generates a correction:
+\begin{equation}
+    \Delta \mathbf{x}_i = -\frac{w_i}{\sum_j w_j} \cdot \frac{C_k(\mathbf{x}) + \tilde{\alpha}_k \lambda_k}{\|\nabla C_k\|^2 + \tilde{\alpha}_k} \nabla_{\mathbf{x}_i} C_k
+    \label{eq:xpbd}
+\end{equation}
+where $w_i = 1/m_i$ is the inverse mass, $\tilde{\alpha}_k = \alpha_k / (\Delta t^2)$ is the scaled compliance, and $\lambda_k$ is the Lagrange multiplier. This formulation is unconditionally stable and naturally differentiable when implemented in JAX.
+
+\paragraph{Coupling Interface.}
+Rigid and deformable bodies are coupled through two-way constraint interfaces: (i) \emph{attachment constraints} that pin XPBD particles to rigid-body link frames, and (ii) \emph{force mapping} that accumulates soft-body reaction forces $\mathbf{f}_\text{soft}$ into the rigid-body generalized force vector:
+\begin{equation}
+    \tau_\text{total} = \tau_\text{actuator} + J_\text{attach}^\top \mathbf{f}_\text{soft}
+\end{equation}
+where $J_\text{attach}$ is the Jacobian mapping particle forces to generalized coordinates.
+
+\paragraph{Differentiability.}
+The entire physics pipeline is implemented in JAX~\citep{bradbury2018jax}, enabling end-to-end gradient propagation through both rigid and soft dynamics. For long-horizon simulations where naive backpropagation suffers from gradient explosion, we employ the trajectory sampling method~\citep{jackson2024analytic} that estimates $\partial \mathbf{x}_T / \partial \theta$ via stochastic trace estimation:
+\begin{equation}
+    \frac{\partial \mathbf{x}_T}{\partial \theta} \approx \frac{1}{K} \sum_{k=1}^{K} \mathbf{v}_k^\top \prod_{t=T-1}^{0} \left( I + \epsilon \frac{\partial f_t}{\partial \mathbf{x}_t} \right) \frac{\partial f_t}{\partial \theta}
+    \label{eq:traj_sample}
+\end{equation}
+where $\mathbf{v}_k \sim \mathcal{N}(0, I)$ are random probe vectors and $K=8$ in practice. This reduces memory from $\mathcal{O}(T)$ to $\mathcal{O}(1)$ while preserving gradient quality.
+
+\subsection{Parametric Morphology Representation}
+\label{sec:morphology}
+
+\paragraph{Morphology Parameter Vector.}
+We define vehicle morphology as a structured parameter vector $\boldsymbol{\mu} \in \mathbb{R}^{d_m}$ composed of four groups:
+\begin{equation}
+    \boldsymbol{\mu} = [\underbrace{\boldsymbol{\mu}_\text{geo}}_{\text{geometry}}, \underbrace{\boldsymbol{\mu}_\text{stiff}}_{\text{stiffness}}, \underbrace{\boldsymbol{\mu}_\text{act}}_{\text{actuation}}, \underbrace{\boldsymbol{\mu}_\text{skin}}_{\text{surface}}]
+    \label{eq:morph_params}
+\end{equation}
+\begin{itemize}
+    \item \textbf{Geometry} $\boldsymbol{\mu}_\text{geo}$: body dimensions (length, width, height), wheelbase, track width, ground clearance, overhang angles. Parameterized as offsets from a base vehicle to preserve physical feasibility.
+    \item \textbf{Stiffness} $\boldsymbol{\mu}_\text{stiff}$: Young's modulus $E$ and Poisson ratio $\nu$ for deformable segments, torsional rigidity for chassis flex. Controls the tradeoff between structural integrity and morphing range.
+    \item \textbf{Actuation} $\boldsymbol{\mu}_\text{act}$: actuator type per joint (hydraulic rotary, pneumatic linear, SMA spring), maximum force/torque, stroke length, response bandwidth $\omega_c$.
+    \item \textbf{Surface} $\boldsymbol{\mu}_\text{skin}$: aerodynamic surface control points (Bézier or NURBS), roughness coefficient, active grille slats, deployable spoiler angle.
+\end{itemize}
+
+\paragraph{Differentiable Actuator Models.}
+Each actuator is modeled as a differentiable force generator. For a pneumatic linear actuator with pressure $p$:
+\begin{equation}
+    F_\text{pneumatic}(p, s) = A_\text{piston}(s) \cdot p - b_\text{fric} \cdot \dot{s} - k_\text{return} \cdot s
+\end{equation}
+where $s$ is the stroke position, $A_\text{piston}(s)$ is the effective area (varies with stroke), $b_\text{fric}$ is viscous friction, and $k_\text{return}$ is the return spring constant. For shape memory alloy (SMA) actuators:
+\begin{equation}
+    F_\text{SMA}(T, s) = \sigma(T, \epsilon(s)) \cdot A_\text{wire} - k_\text{bias} \cdot s
+\end{equation}
+where $\sigma(T, \epsilon)$ follows the Brinson constitutive model with martensite fraction evolving with temperature $T$. Both models are implemented as smooth approximations to ensure gradient flow.
+
+\paragraph{Feasibility Constraints.}
+We enforce physical feasibility through a barrier function $\mathcal{B}(\boldsymbol{\mu})$ that penalizes invalid morphologies:
+\begin{equation}
+    \mathcal{B}(\boldsymbol{\mu}) = -\lambda_b \sum_{i} \log(\text{clip}(c_i(\boldsymbol{\mu}), \epsilon, \infty))
+\end{equation}
+where $c_i(\boldsymbol{\mu}) \geq 0$ encode constraints such as minimum structural rigidity, maximum actuator stroke, collision-free articulation envelopes, and aerodynamic stability bounds (e.g., $C_L / C_D < \bar{r}$).
+
+\subsection{MorphScenario-50: Structured Scenario Suite}
+\label{sec:scenarios}
+
+We design 50 scenarios across 8 categories with three difficulty tiers, systematically covering the A (Adaptive Morphology) dimension of the IDEA framework.
+
+\paragraph{Category Design.}
+The 8 categories span the full spectrum of morphological adaptation:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Cat. & Theme & Easy & Medium & Hard \\
+\midrule
+A & Aerodynamic Drag Reduction & 3 & 2 & 1 \\
+B & Ground Clearance Adaptation & 2 & 3 & 1 \\
+C & Width Constriction & 2 & 2 & 2 \\
+D & Impact Absorption & 2 & 2 & 1 \\
+E & Terrain Morphing & 2 & 2 & 2 \\
+F & Aquatic Transition & 2 & 2 & 1 \\
+G & High-Speed Stability & 2 & 2 & 2 \\
+H & Multi-Objective & 1 & 2 & 2 \\
+\midrule
+ & Total & 16 & 17 & 12 \\
+\bottomrule
+\end{tabular}
+\caption{MorphScenario-50 difficulty distribution across 8 categories.}
+\label{tab:scenarios}
+\end{table}
+
+\paragraph{Difficulty Tiers.}
+Each scenario is assigned a difficulty tier based on:
+\begin{itemize}
+    \item \textbf{Easy}: Single-objective, quasi-static morphology change, open-loop morphing sufficient (e.g., A-01: steady-state aero drag reduction at constant 120 km/h).
+    \item \textbf{Medium}: Multi-objective tradeoffs, dynamic morphology requiring feedback, partially observable conditions (e.g., C-05: narrow alley with oncoming vehicle, requiring real-time width reduction while maintaining stability).
+    \item \textbf{Hard}: Full co-adaptation of morphology and control, multi-phase transitions, safety-critical constraints (e.g., E-08: flood-to-land transition with debris, requiring aquatic configuration $\to$ terrain configuration mid-mission).
+\end{itemize}
+
+\paragraph{Evaluation Protocol.}
+Each scenario defines: (i) an initial morphology $\boldsymbol{\mu}_0$, (ii) a task reward $r_\text{task}(\boldsymbol{\mu}, \pi)$, (iii) constraint thresholds $\{c_j^{\min}\}$, and (iv) a morphology energy budget $E_\text{morph}^{\max}$. The composite score is:
+\begin{equation}
+    S = w_\text{task} \cdot r_\text{task} + w_\text{eff} \cdot \frac{E_\text{morph}^{\max} - E_\text{morph}}{E_\text{morph}^{\max}} + w_\text{time} \cdot \frac{t_\text{max} - t_\text{complete}}{t_\text{max}}
+    \label{eq:score}
+\end{equation}
+where $w_\text{task} = 0.6$, $w_\text{eff} = 0.25$, $w_\text{time} = 0.15$ by default. Constraints are enforced as hard filters: any violation yields $S = 0$.
+
+\subsection{Co-Optimization Pipeline}
+\label{sec:coopt}
+
+\paragraph{Problem Formulation.}
+We formulate morphology-control co-design as a bi-level optimization:
+\begin{align}
+    \boldsymbol{\mu}^* &= \arg\min_{\boldsymbol{\mu}} \mathcal{L}_\text{outer}(\boldsymbol{\mu}, \pi^*(\boldsymbol{\mu})) + \mathcal{B}(\boldsymbol{\mu}) \label{eq:outer} \\
+    \pi^*(\boldsymbol{\mu}) &= \arg\min_{\pi} \mathcal{L}_\text{inner}(\boldsymbol{\mu}, \pi) \label{eq:inner}
+\end{align}
+where the outer loop optimizes morphology parameters and the inner loop trains a control policy conditioned on the current morphology. This alternating structure avoids the high-dimensional joint search while preserving mutual adaptation.
+
+\paragraph{Inner Loop: Policy Training.}
+Given a fixed morphology $\boldsymbol{\mu}$, we train a control policy $\pi_\phi(a | o, \boldsymbol{\mu})$ using Proximal Policy Optimization (PPO)~\citep{schulman2017ppo} with morphology-conditioned observation encoding. The observation $\mathbf{o}_t = [\mathbf{o}_\text{proprio}, \mathbf{o}_\text{extero}, \text{enc}(\boldsymbol{\mu})]$ includes proprioceptive states (velocity, acceleration, joint angles), exteroceptive inputs (terrain class, obstacle distances), and a learned morphology encoding.
+
+\paragraph{Outer Loop: Morphology Gradient.}
+We compute the hypergradient $\nabla_{\boldsymbol{\mu}} \mathcal{L}_\text{outer}$ using the implicit differentiation approach~\citep{lorraine2020optimizing}:
+\begin{equation}
+    \nabla_{\boldsymbol{\mu}} \mathcal{L}_\text{outer} = \frac{\partial \mathcal{L}_\text{outer}}{\partial \boldsymbol{\mu}} - \frac{\partial \mathcal{L}_\text{outer}}{\partial \phi} \left( \frac{\partial^2 \mathcal{L}_\text{inner}}{\partial \phi^2} \right)^{-1} \frac{\partial^2 \mathcal{L}_\text{inner}}{\partial \phi \partial \boldsymbol{\mu}}
+    \label{eq:hypergrad}
+\end{equation}
+The inverse Hessian-vector product is approximated via the Neumann series with $K=5$ terms, following~\citep{lorraine2020optimizing}.
+
+\paragraph{Morphology Evolution Schedule.}
+We adopt a curriculum schedule where morphology updates are less frequent early in training (allowing the policy to stabilize) and increase as convergence approaches:
+\begin{equation}
+    \Delta t_\text{morph}(e) = \Delta t_0 \cdot \exp(-\alpha \cdot e / E)
+\end{equation}
+where $e$ is the current epoch, $E$ is total epochs, $\Delta t_0$ is the initial update interval, and $\alpha$ controls the acceleration rate. In practice, we start with morphology updates every 50 policy epochs and accelerate to every 5 epochs.
+
+\paragraph{Multi-Scenario Aggregation.}
+To produce a single morphology that generalizes across scenarios, we aggregate gradients from multiple scenarios using a MGDA-style~\citep{desideri2012mgda} multi-objective approach:
+\begin{equation}
+    \boldsymbol{\mu}^{(t+1)} = \boldsymbol{\mu}^{(t)} - \eta \sum_{s \in \mathcal{S}_\text{batch}} \alpha_s \nabla_{\boldsymbol{\mu}} \mathcal{L}_s, \quad \text{s.t.} \sum_s \alpha_s = 1, \alpha_s \geq 0
+\end{equation}
+where the weights $\alpha_s$ are solved via the Frank-Wolfe algorithm to minimize the maximum conflict between gradient directions. This ensures balanced improvement across scenarios without manual weight tuning.
+
+\paragraph{Implementation Details.}
+All experiments run on 4$\times$ NVIDIA A100 GPUs with 4096 parallel environments per GPU. Physics simulation runs at 500 Hz with control at 50 Hz and morphology updates at 1 Hz. Each training run completes in approximately 6 hours for the full MorphScenario-50 suite. We use Adam~\citep{kingma2015adam} with learning rate $3 \times 10^{-4}$ for the policy and $1 \times 10^{-3}$ for morphology parameters.

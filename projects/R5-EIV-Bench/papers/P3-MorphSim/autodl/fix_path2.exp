@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+# 修正PYTHONPATH并运行实验
+
+set timeout 300
+set host "connect.westd.seetacloud.com"
+set port "35924"
+set password "gknjW+b/RTtX"
+
+spawn ssh -o StrictHostKeyChecking=no -p $port root@$host
+expect "password:"
+send "$password\r"
+expect "*#"
+
+# PYTHONPATH应该是/root，这样morphsim包才能被找到
+send "cd /root && PYTHONPATH=/root python3 -c 'from morphsim.core.engine import MorphSimEngine; print(\"✅ MorphSim导入成功！\")'\r"
+expect "*#"
+
+# 加载场景
+send "PYTHONPATH=/root python3 -c 'from morphsim.scenarios.loader import ScenarioLoader; loader=ScenarioLoader(); r=loader.get_registry(); print(f\"✅ 场景数: {len(r)}\"); print(f\"场景: {list(r.keys())}\")'\r"
+expect "*#"
+
+# A-01详情
+send "PYTHONPATH=/root python3 -c \"\r"
+send "from morphsim.scenarios.loader import ScenarioLoader\r"
+send "loader = ScenarioLoader()\r"
+send "spec = loader.get_scenario('A-01')\r"
+send "print(f'✅ A-01: {spec.name}')\r"
+send "print(f'   难度: {spec.difficulty}')\r"
+send "print(f'   地形: {spec.terrain_type}')\r"
+send "print(f'   风速: {spec.wind_speed}')\r"
+send "print(f'   活跃参数: {spec.active_morph_params}')\r"
+send "\"\r"
+expect "*#"
+
+send "exit\r"
+expect eof
